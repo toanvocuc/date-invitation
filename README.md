@@ -44,12 +44,29 @@ send ever fails, so an answer can never be lost.
 What you receive: one email per confirmation, with a line per answer plus a
 plain-text summary and a timestamp.
 
+### Testing the delivery
+
+Two things will waste your time if you do not know them:
+
+- **Web3Forms refuses server-side calls on the free plan.** A `curl` POST comes
+  back `403 "Use our API in client side"`. It has to come from a browser.
+- **Cloudflare (in front of their API) blocks headless browsers.** An automated
+  check in headless Chromium fails with a CORS error that looks exactly like a
+  bug in this code - it is not. Drive a real browser
+  (`chromium.launch({ channel: "chrome", headless: false })`) and the same
+  request returns `200 {"success": true}`.
+
 ---
 
 ## 2. Put it on GitHub Pages
 
 The workflow in `.github/workflows/deploy.yml` builds and publishes on every push
 to `main`. It reads the repository name itself, so there is nothing to edit.
+
+This one is already live at <https://toanvocuc.github.io/date-invitation/>.
+Every push to `main` redeploys it; nothing else to do.
+
+Setting it up again from scratch:
 
 1. Create a **public** repository on GitHub (Pages is free only for public repos).
 2. Push this folder to it:
@@ -61,6 +78,10 @@ git push -u origin main
 ```
 
 3. On GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+   This step cannot be skipped by putting `enablement: true` on
+   `actions/configure-pages` - the workflow's own token is not allowed to create
+   the Pages site, and the build just fails with
+   *"Resource not accessible by integration"*.
 4. Push once more (or **Actions → Deploy to GitHub Pages → Run workflow**).
 
 The site appears at `https://<you>.github.io/<repo>/` - that is the link to send.
