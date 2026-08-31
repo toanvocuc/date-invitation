@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import StageCard from "@/components/ui/StageCard";
 import { buildSummary, formatPlanText } from "@/lib/summary";
+import { useMounted } from "@/lib/useMounted";
 import type { SubmitState } from "@/lib/submitPlan";
 import type { DatePlan, StageId } from "@/types/date";
 
@@ -19,6 +20,7 @@ const COPY = {
   share: "Send it 💌",
   retry: "Try sending again",
   edit: "Change something",
+  selectManually: "Your browser blocked the clipboard - copy this instead:",
 };
 
 const CELEBRATION_HEARTS = 9;
@@ -38,7 +40,10 @@ export default function StageConfirmed({
 }: StageConfirmedProps) {
   const rows = buildSummary(plan);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useMounted();
+  const planText = formatPlanText(plan);
 
   useEffect(
     () => () => {
@@ -47,15 +52,21 @@ export default function StageConfirmed({
     [],
   );
 
-  const canShare =
-    typeof navigator !== "undefined" && typeof navigator.share === "function";
+  /*
+   * Desktop Windows exposes navigator.share, but its share sheet is a list of
+   * installed apps (OneNote, Outlook, ...) which is useless here - so the share
+   * sheet is only for devices that actually benefit from it: phones and
+   * tablets. Everything else copies straight to the clipboard.
+   */
+  const preferShare =
+    mounted &&
+    typeof navigator.share === "function" &&
+    window.matchMedia("(pointer: coarse)").matches;
 
   const sendManually = useCallback(async () => {
-    const text = formatPlanText(plan);
-
-    if (canShare) {
+    if (preferShare) {
       try {
-        await navigator.share({ text });
+        await navigator.share({ text: planText });
         return;
       } catch {
         // Share sheet dismissed - fall through to the clipboard.
@@ -63,15 +74,17 @@ export default function StageConfirmed({
     }
 
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(planText);
       setCopied(true);
+      setCopyFailed(false);
       if (copyTimer.current) clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopied(false), 2200);
     } catch {
-      // Clipboard blocked (insecure context, old browser). The plan is printed
-      // on screen below, so it can always be selected by hand.
+      // Clipboard blocked (insecure context, old browser, denied permission):
+      // show the text so it can be selected by hand.
+      setCopyFailed(true);
     }
-  }, [canShare, plan]);
+  }, [planText, preferShare]);
 
   const status = submitState.status;
   const subtitle =
@@ -174,7 +187,7 @@ export default function StageConfirmed({
               : "bg-gradient-to-br from-blush-400 to-blush-600 text-white shadow-[0_14px_30px_-14px_rgba(214,70,120,0.95)]"
           }`}
         >
-          {copied ? COPY.copied : canShare ? COPY.share : COPY.copy}
+          {copied ? COPY.copied : preferShare ? COPY.share : COPY.copy}
         </motion.button>
 
         {status === "error" ? (
@@ -187,6 +200,21 @@ export default function StageConfirmed({
           </button>
         ) : null}
       </div>
+
+      {copyFailed ? (
+        <label className="mt-4 block text-left">
+          <span className="px-1 text-xs font-medium text-plum-500/85">
+            {COPY.selectManually}
+          </span>
+          <textarea
+            readOnly
+            rows={rows.length + 1}
+            value={planText}
+            onFocus={(event) => event.target.select()}
+            className="mt-1.5 w-full resize-none rounded-2xl border border-blush-200 bg-white/90 px-4 py-3 text-sm text-plum-700 outline-none focus:border-blush-400"
+          />
+        </label>
+      ) : null}
 
       <button
         type="button"
